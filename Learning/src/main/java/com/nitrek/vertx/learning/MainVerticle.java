@@ -1,7 +1,6 @@
 package com.nitrek.vertx.learning;
 
 import io.vertx.core.AbstractVerticle;
-import io.vertx.core.DeploymentOptions;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 
@@ -9,16 +8,20 @@ public class MainVerticle extends AbstractVerticle {
 
     @Override
     public void start() {
-    DeploymentOptions options = new DeploymentOptions()
-    .setWorker(true)
-    .setInstances(2);
-    vertx.deployVerticle("com.nitrek.vertx.learning.HelloVerticle",options);
+
+    vertx.deployVerticle(new HelloVerticle());
         Router router = Router.router(vertx);
 
         router.get("/api/v1/hello").handler(this::helloVertx);
         router.get("/api/v1/hello/:name").handler(this::helloNamedVertx);
+        int httpPort ;
 
-        vertx.createHttpServer().requestHandler(router).listen(8080);
+        try{
+            httpPort = Integer.parseInt(System.getProperty("HTTP_PORT","8080"));
+        } catch (NumberFormatException e){
+            httpPort = 8080;
+        }
+        vertx.createHttpServer().requestHandler(router).listen(httpPort);
     
 
 }
