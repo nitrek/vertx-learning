@@ -17,7 +17,7 @@ public class MainVerticle extends AbstractVerticle {
         int httpPort ;
 
         try{
-            httpPort = Integer.parseInt(System.getProperty("HTTP_PORT","8080"));
+            httpPort = Integer.parseInt(System.getProperty("http.port","8080"));
         } catch (NumberFormatException e){
             httpPort = 8080;
         }
