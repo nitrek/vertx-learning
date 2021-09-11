@@ -1,0 +1,13 @@
+version: '2.1'
+
+services:
+  db:
+    image: postgres
+    hostname: psql
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: introduction
+      POSTGRES_PASSWORD: introduction
+      POSTGRES_DATABASE: todo
+      POSTGRES_ADMIN_PASSWORD: introduction
