@@ -18,20 +18,22 @@ public class MainVerticle extends AbstractVerticle {
     @Override
     public void start(Promise<Void> startPromise) {
 
-    vertx.deployVerticle(new HelloVerticle());
+    //vertx.deployVerticle(new HelloVerticle())
+       // vertx.deployVerticle("Hello.groovy");
+        vertx.deployVerticle("Hello.js");
         Router router = Router.router(vertx);
 
-    router
-        .route()
-        .handler(
-            ctx -> {
-              String authToken = ctx.request().getHeader("AUTH_TOKEN");
-              if(authToken != null && authToken.contentEquals("authToken")) {
-                  ctx.next();
-              } else {
-                  ctx.response().setStatusCode(401).setStatusMessage("UNAUTHORISED").end();
-              }
-            });
+//    router
+//        .route()
+//        .handler(
+//            ctx -> {
+//              String authToken = ctx.request().getHeader("AUTH_TOKEN");
+//              if(authToken != null && authToken.contentEquals("authToken")) {
+//                  ctx.next();
+//              } else {
+//                  ctx.response().setStatusCode(401).setStatusMessage("UNAUTHORISED").end();
+//              }
+//            });
         router.get("/api/v1/hello").handler(this::helloVertx);
         router.get("/api/v1/hello/:name").handler(this::helloNamedVertx);
 
