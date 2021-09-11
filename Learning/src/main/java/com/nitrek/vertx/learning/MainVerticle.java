@@ -11,29 +11,38 @@ import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.handler.StaticHandler;
+import io.vertx.ext.web.handler.*;
+import io.vertx.ext.web.sstore.LocalSessionStore;
+import io.vertx.ext.web.sstore.SessionStore;
 
 public class MainVerticle extends AbstractVerticle {
 
     @Override
     public void start(Promise<Void> startPromise) {
 
-    //vertx.deployVerticle(new HelloVerticle())
-       // vertx.deployVerticle("Hello.groovy");
-        vertx.deployVerticle("Hello.js");
-        Router router = Router.router(vertx);
+        vertx.deployVerticle(new HelloVerticle());
+        //vertx.deployVerticle("Hello.groovy");
+        //vertx.deployVerticle("Hello.js");
 
-//    router
-//        .route()
-//        .handler(
-//            ctx -> {
-//              String authToken = ctx.request().getHeader("AUTH_TOKEN");
-//              if(authToken != null && authToken.contentEquals("authToken")) {
-//                  ctx.next();
-//              } else {
-//                  ctx.response().setStatusCode(401).setStatusMessage("UNAUTHORISED").end();
-//              }
-//            });
+        SessionStore sessionStore = LocalSessionStore.create(vertx);
+        Router router = Router.router(vertx);
+        router.route().handler(LoggerHandler.create());
+
+        router.route().handler(SessionHandler.create(sessionStore));
+        router.route().handler(CorsHandler.create("localhost"));
+        router.route().handler(CSRFHandler.create("rejbwjhebfejgffhkvfkhv"));
+
+    router
+        .route()
+        .handler(
+            ctx -> {
+              String authToken = ctx.request().getHeader("AUTH_TOKEN");
+              if(authToken != null && authToken.contentEquals("authToken")) {
+                  ctx.next();
+              } else {
+                  ctx.response().setStatusCode(401).setStatusMessage("UNAUTHORISED").end();
+              }
+            });
         router.get("/api/v1/hello").handler(this::helloVertx);
         router.get("/api/v1/hello/:name").handler(this::helloNamedVertx);
 
