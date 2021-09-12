@@ -1,67 +1,28 @@
 package com.nitrek.vertx.learning;
 
-import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.FlywayException;
-
 import io.vertx.config.ConfigRetriever;
 import io.vertx.config.ConfigRetrieverOptions;
 import io.vertx.config.ConfigStoreOptions;
 import io.vertx.core.AbstractVerticle;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
+import io.vertx.core.CompositeFuture;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Future;
 import io.vertx.core.Promise;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
-import io.vertx.ext.web.handler.CSRFHandler;
-import io.vertx.ext.web.handler.CorsHandler;
-import io.vertx.ext.web.handler.LoggerHandler;
-import io.vertx.ext.web.handler.SessionHandler;
-import io.vertx.ext.web.handler.StaticHandler;
-import io.vertx.ext.web.sstore.LocalSessionStore;
-import io.vertx.ext.web.sstore.SessionStore;
 
 public class MainVerticle extends AbstractVerticle {
 
+    final JsonObject loadedConfig = new JsonObject();
+
     @Override
     public void start(Promise<Void> start) {
-        // vertx.deployVerticle(new HelloVerticle());
-        vertx.deployVerticle("Hello.groovy");
-        vertx.deployVerticle("Hello.js");
-
-        Handler<AsyncResult<Void>> dbMigrationResultHandler = result -> this.handleMigrationResult(start, result);
-
-        vertx.executeBlocking(this::doDatabaseMigrations, dbMigrationResultHandler);
-
-        Router router = Router.router(vertx);
-
-        SessionStore store = LocalSessionStore.create(vertx);
-        router.route().handler(LoggerHandler.create());
-        router.route().handler(SessionHandler.create(store));
-        router.route().handler(CorsHandler.create("localhost"));
-        router.route().handler(CSRFHandler.create("QBR2QTlCvBaAugUBYdd6uWHkx4qA5yaVyxX/GyIgX0xwD71U1KamTWfyBmSgt3VHefeaNrdqdbvh"));
-        router.get("/api/v1/hello").handler(this::helloHandler);
-        router.get("/api/v1/hello/:name").handler(this::helloByNameHandler);
-        router.route().handler(StaticHandler.create("web"));
-
-        doConfig(start, router);
-    }
-
-    void handleMigrationResult(Promise<Void> start, AsyncResult<Void> result) {
-        if (result.failed()) {
-            start.fail(result.cause());
-        }
-    }
-
-    void doDatabaseMigrations(Promise<Void> promise) {
-        Flyway flyway = Flyway.configure().dataSource("jdbc:postgresql://127.0.0.1:5432/todo", "postgres", "introduction").load();
-
-        try {
-            flyway.migrate();
-            promise.complete();
-        } catch (FlywayException fe) {
-            promise.fail(fe);
-        }
+        // Sequential Composition - Do A, Then B, Then C . . . . Handle errors
+        // https://vertx.io/docs/vertx-core/java/#_sequential_composition
+        doConfig()
+            .compose(this::storeConfig)
+            .compose(this::deployOtherVerticles)
+            .setHandler(start::handle);
     }
 
     /**
@@ -69,7 +30,7 @@ public class MainVerticle extends AbstractVerticle {
      * @param start The {@link Promise} which is to be resolved as this Verticle loads
      * @param router The {@link Router} for the REST API paths
      */
-    private void doConfig(Promise<Void> start, Router router) {
+    Future<JsonObject> doConfig() {
         ConfigStoreOptions defaultConfig = new ConfigStoreOptions()
                 .setType("file")
                 .setFormat("json")
@@ -84,47 +45,33 @@ public class MainVerticle extends AbstractVerticle {
 
         ConfigRetriever cfgRetriever = ConfigRetriever.create(vertx, opts);
 
-        Handler<AsyncResult<JsonObject>> handler = asyncResult -> this.handleConfigResults(start, router, asyncResult);
-        cfgRetriever.getConfig(handler);
+        return Future.future(promise -> cfgRetriever.getConfig(promise));
     }
 
     /**
-     * When the {@link ConfigRetriever} resolves, this method handles those results
-     * @param start The {@link Promise} to be resolved either successfully or failed when the configuration is loaded and the HTTP server is created
-     * @param router The {@link Router} which is configured to handle the HTTP requests
-     * @param asyncResult The {@link AsyncResult}, potentially containing a {@link JsonObject} with the loaded configuration
+     * Store loaded configuration for use in subsequent operations
+     * @param config The configuration loaded via Vert.x Config
+     * @return A {@link Future} of type {@link Void} indication the success or failure of this operation
      */
-    void handleConfigResults(Promise<Void> start, Router router, AsyncResult<JsonObject> asyncResult) {
-
-        if (asyncResult.succeeded()) {
-            JsonObject config = asyncResult.result();
-            JsonObject http = config.getJsonObject("http");
-            int httpPort = http.getInteger("port");
-            vertx.createHttpServer().requestHandler(router).listen(httpPort);
-            start.complete();
-        } else {
-            start.fail("Unable to load configuration.");
-        }
+    Future<Void> storeConfig(JsonObject config) {
+        loadedConfig.mergeIn(config);
+        return Promise.<Void>succeededPromise().future();
     }
 
     /**
-     * A handler for requests to the `/api/v1/hello` REST endpoint
-     * @param ctx The {@link RoutingContext} of the request
+     * Deploy our other {@link io.vertx.core.Verticle}s in concurrently
+     * https://vertx.io/docs/vertx-core/java/#_concurrent_composition
+     * @param unused A {@link Void} instance (Not used in this method)
+     * @return A {@link Future} which is resolved once both of the Verticles are deployed
      */
-    void helloHandler(RoutingContext ctx) {
-        vertx.eventBus().request("hello.vertx.addr", "", reply -> {
-            ctx.request().response().end((String)reply.result().body());
-        });
-    }
+    Future<Void> deployOtherVerticles(Void unused) {
+        DeploymentOptions opts = new DeploymentOptions().setConfig(loadedConfig);
 
-    /**
-     * A handler for requests to the `/api/v1/hello/:name` REST endpoint
-     * @param ctx The {@link RoutingContext} of the request
-     */
-    void helloByNameHandler(RoutingContext ctx) {
-        String name = ctx.pathParam("name");
-        vertx.eventBus().request("hello.named.addr", name, reply -> {
-            ctx.request().response().end((String)reply.result().body());
-        });
+        Future<String> dbVerticle = Future.future(promise -> vertx.deployVerticle(new DatabaseVerticle(), opts, promise));
+        Future<String> webVerticle = Future.future(promise -> vertx.deployVerticle(new WebVerticle(), opts, promise));
+        Future<String> helloGroovy = Future.future(promise -> vertx.deployVerticle("Hello.groovy", opts, promise));
+        Future<String> helloJs = Future.future(promise -> vertx.deployVerticle("Hello.js", opts, promise));
+
+        return CompositeFuture.all(helloGroovy, helloJs, dbVerticle, webVerticle).mapEmpty();
     }
 }
